@@ -1,0 +1,39 @@
+# Datasets (grandes, no publicables en el repo - GitHub limita a 100MB por archivo)
+md121/
+Propio/
+Propio_copypaste/
+Propio_copypaste_v2/
+yolo_dataset/
+yolo_dataset_combinado/
+yolo_dataset_combinado7/
+yolo_dataset_desglose/
+yolo_dataset_finetune_propio/
+yolo_dataset_finetune_propio_v2/
+
+# Corridas de entrenamiento completas (logs, checkpoints intermedios, graficas) - varios GB en total
+yolo_runs/
+
+# Resultados de experimentos sueltos / carpetas de trabajo temporales
+resultados_*/
+pst/
+
+# Pesos base preentrenados (se descargan solos al correr los scripts, no hace falta versionarlos)
+yolov8n.pt
+yolo11n.pt
+yolo26n.pt
+
+# Datos de calibracion TFLite (grandes, regenerables)
+calibration_image_sample_data_*.npy
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Config local / IDE / asistentes
+.claude/
+.vscode/
+.idea/
+
+# Scripts de inspeccion puntual, no parte del pipeline documentado
+_arq_output.txt

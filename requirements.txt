@@ -1,0 +1,7 @@
+ultralytics==8.4.82
+opencv-python
+numpy
+pillow
+
+# torch se instala aparte con soporte CUDA (no via este archivo), ej. para CUDA 12.4:
+#   pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cu124
