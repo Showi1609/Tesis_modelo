@@ -31,10 +31,10 @@ import yolo_entrenamiento as yt
 # ==========================================
 DIR_SALIDA = r"C:\Users\jchag\Documents\TESIS\Propio_copypaste_v2"
 VARIANTES_POR_IMAGEN = 3          # igual que la Etapa 6, para no mezclar dos variables
-MOSCAS_POR_VARIANTE_MIN = 15      # antes: 3
-MOSCAS_POR_VARIANTE_MAX = 35      # antes: 8 -- se acerca al promedio real (~33/imagen en test propio)
+MOSCAS_POR_VARIANTE_MIN = 8       # antes: 3 (bajado de 15: 35 causo CUDNN_STATUS_EXECUTION_FAILED por presion de VRAM en la GPU de 6GB)
+MOSCAS_POR_VARIANTE_MAX = 18      # antes: 8 (bajado de 35) -- sigue siendo ~2.4x mas denso que el original, sin acercarse tanto al limite de memoria
 PADDING_RECORTE = 0.15
-MAX_INTENTOS_UBICACION = 60       # antes: 30 -- con mas moscas hace falta mas intentos para encontrar hueco libre
+MAX_INTENTOS_UBICACION = 45       # antes: 30
 SOLAPAMIENTO_MAX = 0.05
 SEMILLA = 123
 

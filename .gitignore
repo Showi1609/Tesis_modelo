@@ -1,8 +1,5 @@
-# Datasets (grandes, no publicables en el repo - GitHub limita a 100MB por archivo)
-md121/
-Propio/
-Propio_copypaste/
-Propio_copypaste_v2/
+# Datasets YOLO ya convertidos (derivados de md121/Propio/Propio_copypaste* - regenerables con los
+# scripts + la semilla fija, no aportan nada que no este ya en las carpetas fuente versionadas abajo)
 yolo_dataset/
 yolo_dataset_combinado/
 yolo_dataset_combinado7/

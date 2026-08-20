@@ -1,0 +1,29 @@
+<annotation>
+	<folder></folder>
+	<filename>2034_jpg.rf.YYXeYHrzQHo3HbaIs1Vx.jpg</filename>
+	<path>2034_jpg.rf.YYXeYHrzQHo3HbaIs1Vx.jpg</path>
+	<source>
+		<database>roboflow.com</database>
+	</source>
+	<size>
+		<width>4000</width>
+		<height>2252</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+	<object>
+		<name>WF</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<occluded>0</occluded>
+		<bndbox>
+			<xmin>826</xmin>
+			<xmax>859</xmax>
+			<ymin>1003</ymin>
+			<ymax>1030</ymax>
+		</bndbox>
+	</object>
+	<metadata>
+	</metadata>
+</annotation>

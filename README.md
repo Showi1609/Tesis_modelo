@@ -32,15 +32,27 @@ Exportado a `models/combinado-6_best_int8.tflite` (cuantización dynamic-range, 
 └── requirements.txt
 ```
 
-## Datasets (no incluidos en el repo — ver `.gitignore`)
+## Datasets
 
-- `md121/` — dataset público (Wageningen), 284 img, clases WF/MR/NC (solo WF se usa).
+- `md121/` — dataset público, 284 img, clases WF/MR/NC (solo WF se usa). Licencia **CC0-1.0**
+  (dominio público). Basado en el trabajo original de Nieuwenhuizen et al. (ver cita abajo);
+  esta versión relabeled viene de [md-121/yellow-sticky-traps-dataset](https://github.com/md-121/yellow-sticky-traps-dataset).
 - `Propio/Tesis.voc/` — dataset propio, 60 img de invernadero real, clase WF.
-- `Propio_copypaste*/` — imágenes sintéticas generadas por `copy_paste_augmentation*.py`.
-- `yolo_dataset_*/` — datasets ya convertidos a formato YOLO (regenerables con los scripts).
-- `yolo_runs/` — corridas de entrenamiento completas (logs + checkpoints intermedios).
+- `Propio_copypaste*/` — imágenes sintéticas generadas por `copy_paste_augmentation*.py`
+  (fondos de `Propio/` + recortes de `md121/`).
 
-Contactar al autor para acceso a los datasets originales.
+No incluidos en el repo (ver `.gitignore`, son derivados regenerables con los scripts + semilla fija):
+`yolo_dataset_*/` (conversión a formato YOLO) y `yolo_runs/` (corridas completas: logs + checkpoints
+intermedios de cada época, varios GB).
+
+### Cita del dataset público
+
+> A.T. Nieuwenhuizen et al., "Raw data from Yellow Sticky Traps with insects for training of deep
+> learning Convolutional Neural Network for object detection," 2019.
+>
+> C. Deserno and A. Briassouli, "Faster R-CNN and EfficientNet for Accurate Insect Identification
+> in a Relabeled Yellow Sticky Traps Dataset," 2021 IEEE International Workshop on Metrology for
+> Agriculture and Forestry (MetroAgriFor), pp. 209-214.
 
 ## Reproducir
 
