@@ -37,6 +37,32 @@
 			<ymax>702</ymax>
 		</bndbox>
 	</object>
+	<object>
+		<name>WF</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<occluded>0</occluded>
+		<bndbox>
+			<xmin>3225</xmin>
+			<xmax>3259</xmax>
+			<ymin>2229</ymin>
+			<ymax>2262</ymax>
+		</bndbox>
+	</object>
+	<object>
+		<name>WF</name>
+		<pose>Unspecified</pose>
+		<truncated>0</truncated>
+		<difficult>0</difficult>
+		<occluded>0</occluded>
+		<bndbox>
+			<xmin>686</xmin>
+			<xmax>717</xmax>
+			<ymin>2650</ymin>
+			<ymax>2677</ymax>
+		</bndbox>
+	</object>
 	<metadata>
 	</metadata>
 </annotation>

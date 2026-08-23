@@ -44,6 +44,15 @@
   <object>
     <name>WF</name>
     <bndbox>
+      <xmin>1299</xmin>
+      <ymin>1124</ymin>
+      <xmax>1344</xmax>
+      <ymax>1158</ymax>
+    </bndbox>
+  </object>
+  <object>
+    <name>WF</name>
+    <bndbox>
       <xmin>733</xmin>
       <ymin>1209</ymin>
       <xmax>773</xmax>
@@ -66,15 +75,6 @@
       <ymin>137</ymin>
       <xmax>1386</xmax>
       <ymax>178</ymax>
-    </bndbox>
-  </object>
-  <object>
-    <name>WF</name>
-    <bndbox>
-      <xmin>1440</xmin>
-      <ymin>1652</ymin>
-      <xmax>1486</xmax>
-      <ymax>1718</ymax>
     </bndbox>
   </object>
 </annotation>

@@ -1,0 +1,572 @@
+import cv2
+import numpy as np
+import os
+from datetime import datetime
+import re
+import glob
+import xml.etree.ElementTree as ET
+
+try:
+    from PIL import Image
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+    SOPORTE_HEIC = True
+except ImportError:
+    SOPORTE_HEIC = False
+
+class PreprocesamientoMIPE:
+    """
+    Módulo de preprocesamiento común con corrección Euclidiana.
+    """
+    def __init__(self, tolerancia_perspectiva=0.08, erosion_borde=0, umbral_laplaciano=2.5, margen_trampa=0.03, debug=False, dir_salida="resultados"):  
+        self.tolerancia_perspectiva = tolerancia_perspectiva
+        self.erosion_borde = erosion_borde
+        self.umbral_laplaciano = umbral_laplaciano
+        self.margen_trampa = margen_trampa
+        self.debug = debug
+        self.dir_salida = dir_salida
+
+    def _guardar_imagen_debug(self, titulo, imagen):
+        if not self.debug or imagen is None:
+            return
+        nombre_archivo = re.sub(r'[^a-zA-Z0-9]', '_', titulo) + ".jpg"
+        ruta_completa = os.path.join(self.dir_salida, nombre_archivo)
+        cv2.imwrite(ruta_completa, imagen)
+
+    def _ordenar_puntos(self, pts):
+        rect = np.zeros((4, 2), dtype="float32")
+        s = pts.sum(axis=1)
+        rect[0] = pts[np.argmin(s)]
+        rect[2] = pts[np.argmax(s)]
+        diff = np.diff(pts, axis=1)
+        rect[1] = pts[np.argmin(diff)]
+        rect[3] = pts[np.argmax(diff)]
+        return rect
+
+    def _expandir_puntos(self, pts):
+        if self.margen_trampa == 0.0:
+            return pts
+        centro = np.mean(pts, axis=0)
+        vectores = pts - centro
+        pts_expandidos = centro + vectores * (1.0 + self.margen_trampa)
+        return np.array(pts_expandidos, dtype="float32")
+
+    def validar_imagen(self, imagen, w_orig, h_orig):
+        if w_orig < 600 or h_orig < 600:
+            return False, f"Resolución insuficiente ({w_orig}x{h_orig})."
+        gris = cv2.cvtColor(imagen, cv2.COLOR_BGR2GRAY)
+        laplacian_var = cv2.Laplacian(gris, cv2.CV_64F).var()
+        if laplacian_var < self.umbral_laplaciano:
+            return False, f"Imagen borrosa (Laplaciano: {laplacian_var:.2f} < {self.umbral_laplaciano})"
+        hsv = cv2.cvtColor(imagen, cv2.COLOR_BGR2HSV)
+        sobreexposicion = np.sum(hsv[:, :, 2] > 250) / (imagen.shape[0] * imagen.shape[1])  
+        if sobreexposicion > 0.80:
+            return False, f"Imagen severamente sobreexpuesta ({sobreexposicion*100:.1f}% de píxeles blancos)."
+        return True, "Validación exitosa"
+
+    def correccion_geometrica(self, imagen):
+        blur = cv2.bilateralFilter(imagen, 11, 75, 75)  
+        hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+       
+        amarillo_bajo = np.array([15, 80, 80])
+        amarillo_alto = np.array([32, 255, 255])
+       
+        mascara = cv2.inRange(hsv, amarillo_bajo, amarillo_alto)
+       
+        kernel_close = np.ones((15, 15), np.uint8)
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_CLOSE, kernel_close)
+        kernel_open = np.ones((5, 5), np.uint8)
+        mascara = cv2.morphologyEx(mascara, cv2.MORPH_OPEN, kernel_open)
+       
+        contornos, _ = cv2.findContours(mascara, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contornos: return None, None
+           
+        contornos = sorted(contornos, key=cv2.contourArea, reverse=True)
+        cnt_principal = contornos[0]
+       
+        h_img, w_img = imagen.shape[:2]
+        if cv2.contourArea(cnt_principal) < (h_img * w_img * 0.05): return None, None
+
+        pts = None
+        perimetro = cv2.arcLength(cnt_principal, True)
+        for eps in np.linspace(0.01, 0.08, 15):
+            aprox = cv2.approxPolyDP(cnt_principal, eps * perimetro, True)
+            if len(aprox) == 4:
+                pts = aprox.reshape(4, 2).astype("float32")
+                break
+               
+        if pts is None:
+            hull = cv2.convexHull(cnt_principal)
+            perimetro_hull = cv2.arcLength(hull, True)
+            for eps in np.linspace(0.01, 0.1, 15):
+                aprox = cv2.approxPolyDP(hull, eps * perimetro_hull, True)
+                if len(aprox) == 4:
+                    pts = aprox.reshape(4, 2).astype("float32")
+                    break
+
+        if pts is None:
+            rect = cv2.minAreaRect(cnt_principal)
+            pts = np.array(cv2.boxPoints(rect), dtype="float32")
+       
+        rectangulo_orig = self._ordenar_puntos(pts)
+        rectangulo = self._expandir_puntos(rectangulo_orig)
+        (tl, tr, br, bl) = rectangulo
+
+        widthA = np.sqrt(((br[0] - bl[0]) ** 2) + ((br[1] - bl[1]) ** 2))
+        widthB = np.sqrt(((tr[0] - tl[0]) ** 2) + ((tr[1] - tl[1]) ** 2))
+        maxWidth = max(int(widthA), int(widthB))
+
+        heightA = np.sqrt(((tr[0] - br[0]) ** 2) + ((tr[1] - br[1]) ** 2))
+        heightB = np.sqrt(((tl[0] - bl[0]) ** 2) + ((tl[1] - bl[1]) ** 2))
+        maxHeight = max(int(heightA), int(heightB))
+
+        dst = np.array([[0, 0], [maxWidth - 1, 0], [maxWidth - 1, maxHeight - 1], [0, maxHeight - 1]], dtype="float32")
+        matriz_perspectiva = cv2.getPerspectiveTransform(rectangulo, dst)
+        imagen_warp = cv2.warpPerspective(imagen, matriz_perspectiva, (maxWidth, maxHeight), borderValue=(0,0,0))
+       
+        # --- ENMASCARAR EL FONDO EXTERNO ---
+        pts_orig_warp = cv2.perspectiveTransform(np.array([rectangulo_orig]), matriz_perspectiva)[0]
+        mascara_trampa = np.zeros((maxHeight, maxWidth), dtype=np.uint8)
+        cv2.fillPoly(mascara_trampa, [np.int32(pts_orig_warp)], 255)
+       
+        kernel_mask = np.ones((15, 15), np.uint8)
+        mascara_trampa = cv2.dilate(mascara_trampa, kernel_mask, iterations=1)
+       
+        imagen_warp = cv2.bitwise_and(imagen_warp, imagen_warp, mask=mascara_trampa)
+       
+        return imagen_warp, matriz_perspectiva
+
+    def normalizar_iluminacion(self, imagen_warp):
+        hsv_warp = cv2.cvtColor(imagen_warp, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv_warp)
+        clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+        v_clahe = clahe.apply(v)
+        hsv_clahe = cv2.merge((h, s, v_clahe))
+        return cv2.cvtColor(hsv_clahe, cv2.COLOR_HSV2BGR)
+
+    def suprimir_reflejos(self, imagen_norm):
+        hsv = cv2.cvtColor(imagen_norm, cv2.COLOR_BGR2HSV)
+        mascara_reflejo = cv2.inRange(hsv, np.array([0, 0, 240]), np.array([179, 30, 255]))
+        kernel = np.ones((5,5), np.uint8)
+        mascara_reflejo = cv2.dilate(mascara_reflejo, np.ones((5,5), np.uint8), iterations=2)
+        imagen_sin_reflejo = cv2.inpaint(imagen_norm, mascara_reflejo, 3, cv2.INPAINT_TELEA)
+        return imagen_sin_reflejo
+
+    def extraer_roi(self, imagen_limpia):
+        h, w = imagen_limpia.shape[:2]
+        if self.erosion_borde > 0:
+            mascara_roi = np.zeros((h, w), dtype=np.uint8)
+            e = self.erosion_borde
+            cv2.rectangle(mascara_roi, (e, e), (w - e, h - e), 255, -1)
+            imagen_final = cv2.bitwise_and(imagen_limpia, imagen_limpia, mask=mascara_roi)
+        else:
+            imagen_final = imagen_limpia.copy()
+        return imagen_final
+
+    def ejecutar_pipeline(self, ruta_imagen):
+        ext = os.path.splitext(ruta_imagen)[1].lower()
+        if ext in ['.heic', '.heif']:
+            if not SOPORTE_HEIC:
+                return None, 1.0, None, "Librerías para HEIC no instaladas."
+            try:
+                img_pil = Image.open(ruta_imagen)
+                img_np = np.array(img_pil)
+                if len(img_np.shape) == 3 and img_np.shape[2] == 3:
+                    imagen = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+                elif len(img_np.shape) == 3 and img_np.shape[2] == 4:
+                    imagen = cv2.cvtColor(img_np, cv2.COLOR_RGBA2BGR)
+                else:
+                    imagen = cv2.cvtColor(img_np, cv2.COLOR_GRAY2BGR)
+            except Exception as e:
+                return None, 1.0, None, f"Error al leer HEIC: {e}"
+        else:
+            imagen = cv2.imread(ruta_imagen)
+           
+        if imagen is None:
+            return None, 1.0, None, "No se pudo cargar la imagen."
+
+        h_orig, w_orig = imagen.shape[:2]
+        escala = 1.0
+        max_dim = 1600
+        if max(h_orig, w_orig) > max_dim:
+            escala = max_dim / max(h_orig, w_orig)
+            imagen = cv2.resize(imagen, (int(w_orig * escala), int(h_orig * escala)))
+
+        valida, msg = self.validar_imagen(imagen, w_orig, h_orig)
+        if not valida and not self.debug: return None, escala, None, msg
+
+        imagen_warp, matriz_perspectiva = self.correccion_geometrica(imagen)
+        if imagen_warp is None: return None, escala, None, "No se encontró la trampa amarilla."
+       
+        imagen_norm = self.normalizar_iluminacion(imagen_warp)
+        imagen_sin_reflejos = self.suprimir_reflejos(imagen_norm)
+        resultado_final = self.extraer_roi(imagen_sin_reflejos)
+
+        return resultado_final, escala, matriz_perspectiva, "OK"
+
+
+class DetectorUnificado:
+    """
+    Detector Unificado.
+    Extrae el Canal B Invertido, HSV y bordes de Cuaterniones para votación.
+    """
+    def __init__(self, w_min=3, w_max=25, h_min=3, h_max=25, area_min=8, area_max=400, debug=False, dir_salida="resultados"):
+        self.w_min, self.w_max = w_min, w_max
+        self.h_min, self.h_max = h_min, h_max
+        self.area_min, self.area_max = area_min, area_max
+        self.debug = debug
+        self.dir_salida = dir_salida
+
+    def _simular_convolucion_sangwine(self, imagen):
+        """Lógica de Cuaterniones original de Sangwine"""
+        img_float = imagen.astype(np.float32) / 255.0
+        kernel_x = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]], dtype=np.float32)
+        kernel_y = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]], dtype=np.float32)
+
+        grad_x_b, grad_x_g, grad_x_r = [cv2.filter2D(img_float[:,:,i], -1, kernel_x) for i in range(3)]
+        grad_y_b, grad_y_g, grad_y_r = [cv2.filter2D(img_float[:,:,i], -1, kernel_y) for i in range(3)]
+
+        mag_b = np.sqrt(grad_x_b**2 + grad_y_b**2) # Magnitud del gradiente para el canal B
+        mag_g = np.sqrt(grad_x_g**2 + grad_y_g**2) # Magnitud del gradiente para el canal G
+        mag_r = np.sqrt(grad_x_r**2 + grad_y_r**2) # Magnitud del gradiente para el canal R
+
+        borde_rgb = cv2.merge([mag_b, mag_g, mag_r])
+        cv2.normalize(borde_rgb, borde_rgb, 0, 255, cv2.NORM_MINMAX)
+        return borde_rgb.astype(np.uint8)
+
+    def detectar_y_dibujar(self, imagen_preprocesada):
+        img_suavizada = cv2.GaussianBlur(imagen_preprocesada, (5, 5), 2)
+
+        # ==========================================
+        # 1. CANAL LAB (ADAPTIVE THRESHOLD)
+        # ==========================================
+        lab = cv2.cvtColor(imagen_preprocesada, cv2.COLOR_BGR2LAB)
+        _, _, b = cv2.split(lab)
+        b_inv = cv2.bitwise_not(b)
+
+        mask_lab = cv2.adaptiveThreshold(b_inv, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, blockSize=35, C=-5)
+        # Limpieza de puntos pequeños (ruido)
+        mask_lab = cv2.morphologyEx(mask_lab, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+        # ==========================================
+        # 2. CANAL HSV (ADAPTIVE THRESHOLD)
+        # ==========================================
+        hsv = cv2.cvtColor(img_suavizada, cv2.COLOR_BGR2HSV)
+        h, s, v = cv2.split(hsv)
+       
+        # --- FILTRO TOP-HAT para normalizar sombras en el brillo (experimental, no usado en la métrica final) ---
+        kernel_tophat = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (35, 35))
+        v_tophat = cv2.morphologyEx(v, cv2.MORPH_TOPHAT, kernel_tophat)
+
+        s_inv = cv2.bitwise_not(s)
+
+        # --- "OTSU HACKEADO" para el canal S ---
+        umbral_otsu, _ = cv2.threshold(s_inv, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        umbral_relajado = max(40, umbral_otsu - 25)
+        _, mask_s = cv2.threshold(s_inv, umbral_relajado, 255, cv2.THRESH_BINARY)
+
+        # Limpieza de puntos pequeños
+        mask_s = cv2.morphologyEx(mask_s, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+        # ==========================================
+        # FILTRO DIRECTO EXTREMO: COMPONENTES CONECTADOS
+        # ==========================================
+        # 1. DERRETIR LA ESPONJA: Hacemos un cierre morfológico en una copia temporal
+        # para fusionar todas esas islitas y grietas del pegamento en un bloque sólido.
+        kernel_fusion = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        mask_s_solida = cv2.morphologyEx(mask_s, cv2.MORPH_CLOSE, kernel_fusion)
+
+        # 2. Medimos los continentes en la máscara ya sólida
+        num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(mask_s_solida, connectivity=8)
+        mask_grandes_objetos = np.zeros_like(mask_s)
+       
+        for i in range(1, num_labels):
+            area_cluster = stats[i, cv2.CC_STAT_AREA]
+            # Subimos un poco el multiplicador (5x) porque al fusionar las áreas crecen.
+            if area_cluster > (self.area_max * 5.0):
+                mask_grandes_objetos[labels == i] = 255
+
+        # 3. Expandimos el agujero negro para comernos los bordes rasgados
+        kernel_destruccion = np.ones((5, 5), np.uint8)
+        mask_grandes_objetos = cv2.dilate(mask_grandes_objetos, kernel_destruccion, iterations=1)
+
+        # 4. Destrucción: Borramos todo lo masivo de las máscaras originales
+        mask_s = cv2.bitwise_and(mask_s, cv2.bitwise_not(mask_grandes_objetos))
+        mask_lab = cv2.bitwise_and(mask_lab, cv2.bitwise_not(mask_grandes_objetos))
+       
+        candidatos_color = cv2.bitwise_or(mask_lab, mask_s)
+
+        # ==========================================
+        # 3. BORDES CUATERNIONES
+        # ==========================================
+        mapa_bordes_rgb = self._simular_convolucion_sangwine(img_suavizada)
+        borde_gris = cv2.cvtColor(mapa_bordes_rgb, cv2.COLOR_BGR2GRAY)
+
+        # --- Destacar objetos brillantes en cuaterniones ---
+        borde_gris = cv2.convertScaleAbs(borde_gris, alpha=2.0, beta=0)
+
+        # Umbral para que los bordes de moscas menos blancas sí salgan
+        _, umbral_quat = cv2.threshold(borde_gris, 40, 255, cv2.THRESH_BINARY)
+
+        # Aumentamos kernel y las iteraciones para lograr que los bordes de las moscas sí se cierren (NUEVO)
+        kernel_cierre = np.ones((5, 5), np.uint8)
+        morf_cerrado = cv2.morphologyEx(umbral_quat, cv2.MORPH_CLOSE, kernel_cierre, iterations=2)
+
+        # PARA MOSCAS EN LOS BORDES: dibujar un marco blanco en los bordes de la imagen
+        h_m, w_m = morf_cerrado.shape
+        cv2.rectangle(morf_cerrado, (0, 0), (w_m-1, h_m-1), 255, 2)
+
+        # Relleno de Cuaterniones (Filtrando formas gigantes)
+        contornos_relleno, _ = cv2.findContours(morf_cerrado, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+        mask_quat = np.zeros_like(morf_cerrado)
+
+        for cnt in contornos_relleno:
+            area = cv2.contourArea(cnt)
+            # Ignoramos insectos grandes y manchas masivas usando el límite máximo permitido
+            if area < self.area_max:
+                cv2.drawContours(mask_quat, [cnt], -1, 255, thickness=cv2.FILLED)
+       
+        # Protegemos también Cuaterniones del agujero negro por seguridad
+        mask_quat = cv2.bitwise_and(mask_quat, cv2.bitwise_not(mask_grandes_objetos))
+
+        # ==========================================
+        # ENSAMBLE Y VOTACIÓN
+        # ==========================================
+        mask_ambos_color = cv2.bitwise_and(mask_lab, mask_s)
+        mask_color_y_quat = cv2.bitwise_and(candidatos_color, mask_quat)
+
+        mask_final = cv2.bitwise_or(mask_ambos_color, mask_color_y_quat)
+
+        mask_final = cv2.morphologyEx(mask_final, cv2.MORPH_OPEN, np.ones((3,3), np.uint8))
+
+        # ==========================================
+        # CONTEO Y DIBUJO FINAL
+        # ==========================================
+        cajas_detectadas = []
+        imagen_boxes = imagen_preprocesada.copy()
+
+        contornos_finales, _ = cv2.findContours(mask_final, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+
+        for cnt in contornos_finales:
+            area_real = cv2.contourArea(cnt)
+           
+            # 1. Filtro base de tamaño por área real
+            if not (self.area_min <= area_real <= self.area_max):
+                continue
+               
+            perimetro = cv2.arcLength(cnt, True)
+            if perimetro == 0:
+                continue
+               
+            # 2. Rectángulo rotado (Captura la proporción real)
+            rect = cv2.minAreaRect(cnt)
+            (w_rot, h_rot) = rect[1]
+            if min(w_rot, h_rot) == 0:
+                continue
+            aspect_ratio_rot = max(w_rot, h_rot) / min(w_rot, h_rot)
+           
+            # 3. Circularidad (Relajada porque los píxeles inflan el perímetro)
+            circularidad = 4 * np.pi * (area_real / (perimetro * perimetro))
+           
+            # 4. Solidez
+            hull = cv2.convexHull(cnt)
+            area_hull = cv2.contourArea(hull)
+            solidez = area_real / area_hull if area_hull > 0 else 0
+           
+            # --- LA REGLA GEOMÉTRICA (Para entender "píxeles reales") ---
+            es_ajonjoli = (1.0 <= aspect_ratio_rot <= 5.0) and (0.15 <= circularidad <= 1.0)
+           
+            if es_ajonjoli and solidez > 0.45:
+                # Bounding box normal solo para extraer pixeles y dibujar
+                x, y, w, h = cv2.boundingRect(cnt)
+               
+                hull = cv2.convexHull(cnt)
+                roi_saturacion = s[y:y+h, x:x+w]
+                roi_brillo = v[y:y+h, x:x+w]
+                roi_mascara = mask_final[y:y+h, x:x+w]
+                media_saturacion = cv2.mean(roi_saturacion, mask=roi_mascara)[0]
+                media_brillo = cv2.mean(roi_brillo, mask=roi_mascara)[0]
+               
+                # Métricas de color finales
+                if media_saturacion < 190 and media_brillo > 80:
+                    cajas_detectadas.append([x, y, x+w, y+h])
+                    cv2.rectangle(imagen_boxes, (x, y), (x+w, y+h), (0, 255, 0), 2)
+
+        return imagen_boxes, len(cajas_detectadas), cajas_detectadas
+
+class EvaluadorDataset:
+    """Maneja la carga del dataset, transformación de coordenadas XML y cálculo de métricas."""
+    def __init__(self, umbral_iou=0.1):
+        self.umbral_iou = umbral_iou
+
+    def parsear_xml(self, ruta_xml):
+        """Extrae cajas [xmin, ymin, xmax, ymax] del XML VOC solo para la clase 'WF'."""
+        cajas = []
+        try:
+            root = ET.parse(ruta_xml).getroot()
+            for obj in root.findall('object'):
+                nombre_clase = obj.find('name').text
+                # Filtro estricto para mosca blanca
+                if nombre_clase == 'WF':
+                    bndbox = obj.find('bndbox')
+                    cajas.append([
+                        int(float(bndbox.find('xmin').text)),
+                        int(float(bndbox.find('ymin').text)),
+                        int(float(bndbox.find('xmax').text)),
+                        int(float(bndbox.find('ymax').text))
+                    ])
+        except Exception as e:
+            print(f"Error leyendo {ruta_xml}: {e}")
+        return cajas
+
+    def transformar_cajas_gt(self, cajas_xml, escala, matriz_perspectiva):
+        """Mapea las cajas del XML al espacio de la imagen procesada (solo escala y homografía)."""
+        cajas_transformadas = []
+        for (xmin, ymin, xmax, ymax) in cajas_xml:
+            # 1. Ajustar a la escala inicial
+            pts = np.array([
+                [xmin * escala, ymin * escala],
+                [xmax * escala, ymin * escala],
+                [xmax * escala, ymax * escala],
+                [xmin * escala, ymax * escala]
+            ], dtype='float32').reshape(-1, 1, 2)
+           
+            # 2. Aplicar la transformación de perspectiva (warp)
+            if matriz_perspectiva is not None:
+                pts_trans = cv2.perspectiveTransform(pts, matriz_perspectiva)
+            else:
+                pts_trans = pts
+               
+            pts_trans = pts_trans.reshape(4, 2)
+           
+            # 3. Extraer el nuevo Bounding Box
+            n_xmin, n_xmax = int(np.min(pts_trans[:, 0])), int(np.max(pts_trans[:, 0]))
+            n_ymin, n_ymax = int(np.min(pts_trans[:, 1])), int(np.max(pts_trans[:, 1]))
+           
+            cajas_transformadas.append([n_xmin, n_ymin, n_xmax, n_ymax])
+           
+        return cajas_transformadas
+
+    def calcular_iou(self, cajaA, cajaB):
+        """Calcula el Índice de Intersección sobre Unión."""
+        xA = max(cajaA[0], cajaB[0])
+        yA = max(cajaA[1], cajaB[1])
+        xB = min(cajaA[2], cajaB[2])
+        yB = min(cajaA[3], cajaB[3])
+
+        interArea = max(0, xB - xA) * max(0, yB - yA)
+        if interArea == 0: return 0.0
+
+        boxAArea = (cajaA[2] - cajaA[0]) * (cajaA[3] - cajaA[1])
+        boxBArea = (cajaB[2] - cajaB[0]) * (cajaB[3] - cajaB[1])
+       
+        return interArea / float(boxAArea + boxBArea - interArea)
+
+    def evaluar_imagen(self, cajas_pred, cajas_gt):
+        TP = 0
+        gt_usadas = set()
+       
+        for pred in cajas_pred:
+            mejor_iou = 0
+            mejor_gt_idx = -1
+           
+            for i, gt in enumerate(cajas_gt):
+                if i in gt_usadas: continue
+                iou = self.calcular_iou(pred, gt)
+                if iou > mejor_iou:
+                    mejor_iou = iou
+                    mejor_gt_idx = i
+
+            if mejor_iou >= self.umbral_iou:
+                TP += 1
+                gt_usadas.add(mejor_gt_idx)
+
+        FP = len(cajas_pred) - TP
+        FN = len(cajas_gt) - len(gt_usadas)
+        return TP, FP, FN
+
+
+# ==========================================
+# EJECUCIÓN PRINCIPAL Y COMPARACIÓN BATCH
+# ==========================================
+if __name__ == "__main__":
+    # --- RUTAS PRINCIPALES ---
+    dir_base = r"C:\Users\jchag\Documents\TESIS\Propio\Tesis.voc"
+    dir_images = os.path.join(dir_base, "imagess")
+    dir_annotations = os.path.join(dir_base, "annotations")
+   
+    carpeta_salida = f"resultados_batch_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    os.makedirs(carpeta_salida, exist_ok=True)
+   
+    # Inicializar Módulos (Debug en False para ir más rápido, actívalo si lo necesitas)
+    erosion_configurada = 0
+    preprocesador = PreprocesamientoMIPE(erosion_borde=erosion_configurada, margen_trampa=0.03, debug=False, dir_salida=carpeta_salida)
+    detector = DetectorUnificado(debug=False, dir_salida=carpeta_salida)
+    evaluador = EvaluadorDataset(umbral_iou=0.45) # igual que la metodologia usada para YOLO en toda la tesis
+
+    archivos_img = glob.glob(os.path.join(dir_images, "*.jpg"))
+   
+    total_TP, total_FP, total_FN = 0, 0, 0
+
+    print(f"Iniciando evaluación. Imágenes encontradas: {len(archivos_img)}")
+    print("-" * 50)
+
+    for ruta_img in archivos_img:
+        nombre_base = os.path.splitext(os.path.basename(ruta_img))[0]
+        ruta_xml = os.path.join(dir_annotations, f"{nombre_base}.xml")
+       
+        if not os.path.exists(ruta_xml):
+            print(f"[{nombre_base}] XML no encontrado. Saltando.")
+            continue
+           
+        # 1. Leer Ground Truth (XML) filtrado por 'WF'
+        cajas_xml_originales = evaluador.parsear_xml(ruta_xml)
+       
+        # 2. Preprocesar Imagen
+        img_prep, escala, matriz, msg = preprocesador.ejecutar_pipeline(ruta_img)
+       
+        if img_prep is None:
+            print(f"[{nombre_base}] Imagen descartada: {msg}")
+            continue
+
+        # 3. Transformar coordenadas del GT al espacio de la imagen preprocesada (corrección aplicada)
+        cajas_gt_transformadas = evaluador.transformar_cajas_gt(cajas_xml_originales, escala, matriz)
+       
+        # 4. Predicción del modelo
+        img_dibujada, conteo, cajas_predichas = detector.detectar_y_dibujar(img_prep.copy())
+       
+        # 5. Evaluación (Comparativa)
+        tp, fp, fn = evaluador.evaluar_imagen(cajas_predichas, cajas_gt_transformadas)
+       
+        total_TP += tp
+        total_FP += fp
+        total_FN += fn
+       
+        # Dibujar también las cajas reales (Azul) para comparar visualmente y guardar la imagen
+        for gt in cajas_gt_transformadas:
+            cv2.rectangle(img_dibujada, (gt[0], gt[1]), (gt[2], gt[3]), (255, 0, 0), 1) # Azul = Real
+           
+        cv2.imwrite(os.path.join(carpeta_salida, f"{nombre_base}_eval.jpg"), img_dibujada)
+        print(f"[{nombre_base}] Real (WF): {len(cajas_xml_originales)} | Predicho: {conteo} -> TP:{tp} FP:{fp} FN:{fn}")
+
+    # --- RESULTADOS FINALES ---
+    print("\n" + "=" * 50)
+    print("MÉTRICAS GLOBALES DEL DATASET")
+    print("=" * 50)
+    precision = total_TP / (total_TP + total_FP) if (total_TP + total_FP) > 0 else 0
+    total_reales = total_TP + total_FN
+    recall = total_TP / total_reales if total_reales > 0 else 0
+    f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+
+    print(f"Total Verdaderos Positivos (Moscas correctas): {total_TP}")
+    print(f"Total Falsos Positivos (Ruido detectado como mosca): {total_FP}")
+    print(f"Total Falsos Negativos (Moscas no detectadas): {total_FN}")
+    print("-" * 50)
+    print(f"Total de Moscas Reales en el Dataset: {total_reales}")
+    print("-" * 50)
+    print(f"Precisión (Precision): {precision:.2%}")
+    print(f"Sensibilidad (Recall):   {recall:.2%}")
+    print(f"F1-Score:                {f1_score:.2%}")
+    print("=" * 50)
+    print(f"Imágenes de evaluación guardadas en: {carpeta_salida}")
+    print("(Las cajas VERDES son tus predicciones, las AZULES son el Ground Truth del XML)")

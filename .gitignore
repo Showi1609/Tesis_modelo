@@ -6,6 +6,32 @@ yolo_dataset_combinado7/
 yolo_dataset_desglose/
 yolo_dataset_finetune_propio/
 yolo_dataset_finetune_propio_v2/
+yolo_dataset_combinado6_v2/
+yolo_dataset_combinado8/
+yolo_dataset_combinado8_v2/
+yolo_dataset_combinado9/
+yolo_dataset_combinado9_v2/
+yolo_dataset_combinado10/
+yolo_dataset_combinado11_v2/
+yolo_dataset_fold*/
+
+# Copy-paste sinteticas de folds/variantes experimentales (Etapas 18-22), regenerables con
+# semilla fija -- distinto de Propio_copypaste/ base (si se versiona: es el dataset del modelo
+# de produccion combinado-6_v2)
+Propio_copypaste_fold*/
+Propio_copypaste_v3/
+Propio_copypaste_v3_v2/
+Propio_copypaste_v4/
+Propio_copypaste_v4_v2/
+Propio_selfcp_fold*/
+
+# Volcados de inspeccion/diagnostico puntual (no parte del pipeline documentado)
+diagnostico_*/
+auditoria_fp_propio/
+revision_fp_test_propio/
+
+# Logs de entrenamiento (progreso efimero en texto; el resultado final ya queda en JSON)
+*_log.txt
 
 # Corridas de entrenamiento completas (logs, checkpoints intermedios, graficas) - varios GB en total
 yolo_runs/

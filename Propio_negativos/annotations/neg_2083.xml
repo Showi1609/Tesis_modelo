@@ -1,0 +1,14 @@
+<annotation>
+	<folder></folder>
+	<filename>neg_2083.jpg</filename>
+	<path>neg_2083.jpg</path>
+	<source>
+		<database>propio_negativos</database>
+	</source>
+	<size>
+		<width>899</width>
+		<height>1599</height>
+		<depth>3</depth>
+	</size>
+	<segmented>0</segmented>
+</annotation>
