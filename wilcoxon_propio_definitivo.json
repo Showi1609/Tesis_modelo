@@ -1,0 +1,33 @@
+{
+  "0.1": {
+    "n_total": 60,
+    "n_excluidas": 0,
+    "n_pares": 60,
+    "n_no_nulos": 58,
+    "f1_medio_A": 0.588,
+    "f1_medio_B": 0.6444,
+    "mediana_diferencia": 0.056,
+    "gana_B": 34,
+    "gana_A": 24,
+    "empates": 2,
+    "W": 595.0,
+    "p_dos_colas": 0.04370707656889005,
+    "p_una_cola": 0.021853538284445025
+  },
+  "0.45": {
+    "n_total": 60,
+    "n_excluidas": 0,
+    "n_pares": 60,
+    "n_no_nulos": 59,
+    "f1_medio_A": 0.0957,
+    "f1_medio_B": 0.6009,
+    "mediana_diferencia": 0.5455,
+    "gana_B": 58,
+    "gana_A": 1,
+    "empates": 1,
+    "W": 41.0,
+    "p_dos_colas": 1.87949866411281e-10,
+    "p_una_cola": 9.39749332056405e-11
+  },
+  "_nota": "Candidato A reevaluado en contenedor con OpenCV 4.13; diferencias de +-1 a 4 detecciones frente al log original en 21 de 60 imagenes. Candidato B: k-fold, cada imagen evaluada por el modelo del fold que la tuvo como prueba."
+}

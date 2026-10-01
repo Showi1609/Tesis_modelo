@@ -1,62 +1,77 @@
-# Datasets YOLO ya convertidos (derivados de md121/Propio/Propio_copypaste* - regenerables con los
-# scripts + la semilla fija, no aportan nada que no este ya en las carpetas fuente versionadas abajo)
-yolo_dataset/
-yolo_dataset_combinado/
-yolo_dataset_combinado7/
-yolo_dataset_desglose/
-yolo_dataset_finetune_propio/
-yolo_dataset_finetune_propio_v2/
-yolo_dataset_combinado6_v2/
-yolo_dataset_combinado8/
-yolo_dataset_combinado8_v2/
-yolo_dataset_combinado9/
-yolo_dataset_combinado9_v2/
-yolo_dataset_combinado10/
-yolo_dataset_combinado11_v2/
-yolo_dataset_fold*/
+# 1. Ignorar todo por defecto
+*
 
-# Copy-paste sinteticas de folds/variantes experimentales (Etapas 18-22), regenerables con
-# semilla fija -- distinto de Propio_copypaste/ base (si se versiona: es el dataset del modelo
-# de produccion combinado-6_v2)
-Propio_copypaste_fold*/
-Propio_copypaste_v3/
-Propio_copypaste_v3_v2/
-Propio_copypaste_v4/
-Propio_copypaste_v4_v2/
-Propio_selfcp_fold*/
+# 2. Permitir carpetas raiz
+!*/
 
-# Volcados de inspeccion/diagnostico puntual (no parte del pipeline documentado)
-diagnostico_*/
-auditoria_fp_propio/
-revision_fp_test_propio/
+# 3. Archivos de configuracion y documentacion
+!.gitignore
+!README.md
+!requirements.txt
 
-# Logs de entrenamiento (progreso efimero en texto; el resultado final ya queda en JSON)
-*_log.txt
+# 4. Datasets fuente oficiales
+!md121/
+!md121/**
+!Propio/
+!Propio/**
 
-# Corridas de entrenamiento completas (logs, checkpoints intermedios, graficas) - varios GB en total
-yolo_runs/
-
-# Resultados de experimentos sueltos / carpetas de trabajo temporales
-resultados_*/
-pst/
-
-# Pesos base preentrenados (se descargan solos al correr los scripts, no hace falta versionarlos)
-yolov8n.pt
-yolo11n.pt
-yolo26n.pt
-
-# Datos de calibracion TFLite (grandes, regenerables)
-calibration_image_sample_data_*.npy
-
-# Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Config local / IDE / asistentes
+# Exclusiones de seguridad dentro de datasets y raiz
+md121/images/Propio/
+Propio_copypaste/
+*.DS_Store
+*.kml
+*.kmz
+*.mp4
+*.heic
+*.docx
+*.pptx
+*.pdf
 .claude/
-.vscode/
-.idea/
+Adjuntos/
+restaurar_biocount/
 
-# Scripts de inspeccion puntual, no parte del pipeline documentado
-_arq_output.txt
+# 5. Pesos finales v2 en models/
+!models/
+!models/whitefly_yolov8n_combinado6_v2.pt
+!models/whitefly_yolov8n_combinado6_v2_int8.tflite
+
+# 6. Pipeline de entrenamiento y aumento de datos
+!copy_paste_augmentation.py
+!yolo_entrenamiento.py
+!yolo_entrenamiento_combinado6_v2.py
+!kfold_cv_v2.py
+!recalcular_kfold_iou_match.py
+!recalcular_kfold_antiguo_iou_match.py
+!exportar_tflite_v2.py
+
+# 7. Evaluacion de candidatos, TFLite y pruebas estadisticas
+!candidato_a_publico_fix_exif_iou01.py
+!reevaluar_candidato_a_publico44.py
+!reevaluar_candidato_a_propio.py
+!candidato_a_iou045.py
+!analisis_areas_iou_candidatos.py
+!evaluar_combinado6_v2_iou01.py
+!evaluar_combinado6_v2_iou_match.py
+!evaluar_tflite_v2.py
+!test_wilcoxon_publico.py
+!analisis_completo_wilcoxon.py
+!Test_cand_A
+!Test_metricas_A
+!Test_all_XML
+
+# 8. JSON de resultados oficiales
+!kfold_iou_match_resultados.json
+!kfold_antiguo_iou_match_resultados.json
+!candidato_a_propio_iou045.json
+!candidato_a_publico44.json
+!wilcoxon_publico_resultados.json
+!wilcoxon_propio_definitivo.json
+!bootstrap_f1_propio_raw.json
+
+# 9. Generadores y archivos de graficas de la tesis
+!generar_graficas_tesis.py
+!generar_fig_curva_v2.py
+!generar_fig_copypaste.py
+!generar_fig_kfold_corregida.py
+!graficas_tesis/
+!graficas_tesis/**

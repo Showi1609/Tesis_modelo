@@ -1,6 +1,0 @@
-from ultralytics import YOLO
-
-# Esto cargará el modelo más ligero de YOLOv8 (y lo descargará si es necesario)
-modelo = YOLO("yolov8n.pt") 
-
-print("¡YOLO está instalado y listo para la tesis!")

@@ -1,65 +1,66 @@
-# BioCount MIPE — Modelo (YOLOv8n, detección de mosca blanca)
+# Pipeline de Entrenamiento, Evaluación y Despliegue — BioCount MIP (Modelo v2)
 
-Pipeline de entrenamiento y evaluación del Candidato B (YOLOv8n) para el conteo automático de
-mosca blanca (*whitefly*, WF) en trampas amarillas pegajosas, parte del proyecto de tesis
-BioCount MIPE. Complementa al repo de la app Android que consume el modelo exportado.
+Este repositorio contiene el código fuente, conjuntos de datos y resultados numéricos del modelo de visión por computador para la detección y conteo automático de mosca blanca (*Trialeurodes vaporariorum* / *Bemisia tabaci*) en trampas cromáticas amarillas.
 
-Bitácora completa del proceso (10 etapas, métricas por época, decisiones y descartes):
-**[link al artifact — actualizar con la URL pública]**
+---
 
-## Resultado final
+## 1. Especificaciones del Modelo Final (`combinado-6_v2`)
 
-Modelo recomendado: `models/combinado-6_best.pt` (F1 agregado test = 0.7445, público = 0.8149,
-propio = 0.6325, medido con el NMS iou=0.45 real de la app — ver Etapa 10 de la bitácora).
-Exportado a `models/combinado-6_best_int8.tflite` (cuantización dynamic-range, 4MB) para la app.
+- **Arquitectura:** YOLOv8n (nano) adaptado para detección de objetos pequeños.
+- **Modelo desplegado:** `models/whitefly_yolov8n_combinado6_v2_int8.tflite` (cuantizado a INT8).
+- **Suma de comprobación SHA-256:** `a4be7a54d71861a2a48e83630c0516dfa96c2b29927b7e42280587e20e388fa4`
+- **Parámetros de Inferencia en Aplicación Móvil:**
+  - Tamaño de entrada: 1280 px (con letterbox gris RGB 114, 114, 114).
+  - Umbral de confianza (`conf`): 0.25 (fijo).
+  - Umbral de NMS IoU (`iou`): 0.45 (fijo).
+  - Modo por defecto: Mosaico 2×2 (20% de traslape, fusión por contención 0.65).
 
-## Estructura
+---
 
-```
-├── yolo_entrenamiento.py              # pipeline principal: dataset + entrenamiento (combinado-6)
-├── yolo_entrenamiento_combinado7.py   # variante con copy-paste mas denso (Etapa 11, en evaluación)
-├── copy_paste_augmentation.py         # genera las 126 imágenes sintéticas (Etapa 6)
-├── copy_paste_augmentation_v2.py      # variante con más moscas por trampa sintética (Etapa 11)
-├── finetune_propio.py                 # fine-tuning sobre propio (Etapas 5 y 7)
-├── weight_soup_propio.py              # interpolación de pesos combinado-6 x finetune_v2 (Etapa 9)
-├── threshold_sweep_propio.py          # barrido de umbral de confianza (Etapa 10)
-├── reeval_iou045_todas.py             # corrección metodológica de NMS iou (Etapa 10)
-├── evaluar_test_yolo.py               # evalúa un best.pt sobre el test agregado
-├── evaluar_por_fuente.py              # evalúa desglosado en público vs. propio
-├── exportar_tflite.py                 # exporta y cuantiza a TFLite
-├── Test_cand_A / Test_metricas_A / Test_all_XML   # Candidato A: ensamble clásico OpenCV
-├── models/                            # pesos finales (los únicos binarios versionados)
-└── requirements.txt
-```
+## 2. Definición de Candidatos Comparados
 
-## Datasets
+- **Candidato A (Pipeline Clásico con OpenCV):** Pipeline tradicional basado en visión por computador clásica (espacios de color, umbralización adaptable, operaciones morfológicas y filtrado de contornos con OpenCV).
+- **Candidato B (YOLOv8n `combinado-6_v2` INT8 TFLite):** Modelo de aprendizaje profundo basado en YOLOv8n entrenado con el conjunto de datos combinado (`md121` + dataset propio con aumento Copy-Paste (`copy_paste_augmentation.py`)) y cuantizado a INT8.
 
-- `md121/` — dataset público, 284 img, clases WF/MR/NC (solo WF se usa). Licencia **CC0-1.0**
-  (dominio público). Basado en el trabajo original de Nieuwenhuizen et al. (ver cita abajo);
-  esta versión relabeled viene de [md-121/yellow-sticky-traps-dataset](https://github.com/md-121/yellow-sticky-traps-dataset).
-- `Propio/Tesis.voc/` — dataset propio, 60 img de invernadero real, clase WF.
-- `Propio_copypaste*/` — imágenes sintéticas generadas por `copy_paste_augmentation*.py`
-  (fondos de `Propio/` + recortes de `md121/`).
+---
 
-No incluidos en el repo (ver `.gitignore`, son derivados regenerables con los scripts + semilla fija):
-`yolo_dataset_*/` (conversión a formato YOLO) y `yolo_runs/` (corridas completas: logs + checkpoints
-intermedios de cada época, varios GB).
+## 3. Orden de Reproducción de Experimentos
 
-### Cita del dataset público
+1. **Preparación de Datasets:**
+   - Datasets fuente en `md121/` y `Propio/Tesis.voc/`.
+2. **Aumento de Datos:**
+   - Script: `copy_paste_augmentation.py` (Genera el conjunto propio aumentado con Copy-Paste).
+3. **Entrenamiento:**
+   - Scripts: `yolo_entrenamiento.py` y `yolo_entrenamiento_combinado6_v2.py`.
+4. **Validación Cruzada 5-Fold (5-Fold CV):**
+   - Scripts: `kfold_cv_v2.py` y `recalcular_kfold_iou_match.py`.
+   - Resultados exportados en: `kfold_iou_match_resultados.json` y `kfold_antiguo_iou_match_resultados.json`.
+5. **Evaluación de Candidatos:**
+   - Script Candidato A (Público 44 imágenes): `candidato_a_publico_fix_exif_iou01.py` y `reevaluar_candidato_a_publico44.py`.
+     - Resultados exportados en: `candidato_a_publico44.json`.
+   - Script Candidato A (Dataset propio): `reevaluar_candidato_a_propio.py`.
+     - Resultados exportados en: `candidato_a_propio_iou045.json`.
+   - Scripts Candidato B (YOLOv8n v2): `evaluar_combinado6_v2_iou_match.py`, `exportar_tflite_v2.py`, `evaluar_tflite_v2.py`.
+6. **Pruebas Estadísticas:**
+   - Script: `test_wilcoxon_publico.py` y `analisis_completo_wilcoxon.py`.
+   - Resultados exportados en: `wilcoxon_publico_resultados.json` y `wilcoxon_propio_definitivo.json`.
+   - Datos del bootstrap: `bootstrap_f1_propio_raw.json` (entrada de `generar_graficas_tesis.py`).
+7. **Generación de Gráficas de la Tesis:**
+   - Scripts: `generar_graficas_tesis.py`, `generar_fig_curva_v2.py`, `generar_fig_copypaste.py`, `generar_fig_kfold_corregida.py`.
+   - Salidas visuales en: `graficas_tesis/`.
 
-> A.T. Nieuwenhuizen et al., "Raw data from Yellow Sticky Traps with insects for training of deep
-> learning Convolutional Neural Network for object detection," 2019.
->
-> C. Deserno and A. Briassouli, "Faster R-CNN and EfficientNet for Accurate Insect Identification
-> in a Relabeled Yellow Sticky Traps Dataset," 2021 IEEE International Workshop on Metrology for
-> Agriculture and Forestry (MetroAgriFor), pp. 209-214.
+---
 
-## Reproducir
+## 4. Resultados Clave Citados (Origen de Datos)
 
-```bash
-pip install -r requirements.txt
-python yolo_entrenamiento.py
-```
+Todos los valores citados provienen de archivos JSON de resultados versionados en este repositorio:
 
-Configuración de la corrida (fuente de datos, sobremuestreo, copy-paste) se ajusta al inicio de
-`yolo_entrenamiento.py`.
+| Experimento / Conjunto | Archivo JSON de Origen | Métrica Destacada |
+| :--- | :--- | :--- |
+| **Candidato A — Público (44 imágenes)** | `candidato_a_publico44.json` | **IoU 0.10:** F1 = 0.5361 (TP=338, FP=410, FN=175)<br>**IoU 0.45:** F1 = 0.0539 (TP=34, FP=714, FN=479) |
+| **Prueba de Wilcoxon (Público - 24 pares)** | `wilcoxon_publico_resultados.json` | F1 medio A = 0.4964 vs F1 medio B = 0.8199<br>Gana B: 23, Gana A: 1 ($p = 1.82 \times 10^{-5}$) |
+| **Prueba de Wilcoxon (Propio - 60 imágenes), IoU 0.10** | `wilcoxon_propio_definitivo.json` | F1 medio A = 0.588 vs F1 medio B = 0.6444<br>Gana B: 34, Gana A: 24, Empates: 2 ($p = 0.0437$) |
+| **Prueba de Wilcoxon (Propio - 60 imágenes)** | `wilcoxon_propio_definitivo.json` | **IoU 0.45:** F1 medio A = 0.0957 vs F1 medio B = 0.6009<br>Gana B: 58, Gana A: 1 ($p = 1.88 \times 10^{-10}$) |
+| **Validación Cruzada 5-Fold** | `kfold_iou_match_resultados.json` | Métricas agregadas por pliegue de la validación cruzada. |
+
+*Nota: Los scripts conservan las rutas absolutas del entorno donde se ejecutaron; para reproducirlos, ajuste las rutas `BASE` al inicio de cada archivo.*
